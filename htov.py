@@ -11,6 +11,7 @@
 
 from copy import deepcopy
 from math import ceil
+import math
 from mtspec import mtspec, sine_psd
 import numpy as np
 from obspy.core.util import scoreatpercentile as quantile
@@ -358,7 +359,8 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                         v_spec = np.dot(v_spec, sm_matrix)
                         h1_spec = np.dot(h1_spec, sm_matrix)
                         h2_spec = np.dot(h2_spec, sm_matrix)
-            hv_spec = np.sqrt(h1_spec * h2_spec) / v_spec
+            #hv_spec = np.sqrt(h1_spec * h2_spec) / v_spec
+            hv_spec = np.sqrt(0.5 * (np.abs(h1_spec) + np.abs(h2_spec)) / np.abs(v_spec))
             if _i == 0:
                 good_freq = v_freq
             # Store it into the matrix if it has the correct length.
@@ -387,23 +389,31 @@ def calculateHVSR(stream, intervals, window_length, method, options,
             h2 = stream[h[1]].data[interval[0]: interval[0] + \
                                 window_length]
             # Calculate the spectra.
+            delta = stream[0].stats.delta
+            samplingrate = stream[0].stats.sampling_rate
             v_cwt, v_freq = cwt_TFA(v,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
+                                    delta, good_length, f_min, f_max)
             h1_cwt, h1_freq = cwt_TFA(h1,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
+                                    delta, good_length, f_min, f_max)
             h2_cwt, h2_freq = cwt_TFA(h2,
-                                    stream[0].stats.delta, good_length, f_min, f_max)
+                                    delta, good_length, f_min, f_max)
             # Convert to spectrum via vertical maxima search
-            h_cwt = np.sqrt((h1_cwt ** 2 + h2_cwt ** 2)) # FIXME test 0.5 * inner
+            #h_cwt = np.sqrt(np.abs(h1_cwt) ** 2 + np.abs(h2_cwt) ** 2) # FIXME test 0.5 * inner
+            h_cwt = np.abs(h1_cwt)  + np.abs(h2_cwt) 
             v_cwt = np.abs(v_cwt)
             v_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             h_spec = np.ma.array(np.zeros(v_freq.shape[0]),mask=np.ones(v_freq.shape[0]))
             #h_spec = np.zeros(v_freq.shape[0])
             for findex in xrange(v_freq.shape[0]):
                 f = v_freq[findex]
-                rayleighDelay = int(0.25 * (1.0/f) * stream[0].stats.sampling_rate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
-                extrema = argrelextrema(v_cwt[findex,rayleighDelay:-rayleighDelay], np.greater)
-                e = extrema[0]
+                period = 1.0/f
+                deltaT = 8.0/(2.0*math.pi*f) # * sqrt(m), m = 1
+		coi = int(3.0*deltaT*samplingrate + 0.5);
+                rayleighDelay = int(0.25 * period * samplingrate + 0.5) # the + 0.5 at the end is to round to nearest for integer reference
+                ivmax = max(coi,rayleighDelay)
+                #extrema = argrelextrema(v_cwt[findex,rayleighDelay:-rayleighDelay], np.greater)
+                extrema = argrelextrema(v_cwt[findex,ivmax:-coi], np.greater)
+                e = extrema[0] + ivmax
                 if e.shape[0] == 0:
                     print "No peaks found for frequency " + str(f)
                     v_spec[findex] = np.ma.masked
@@ -414,7 +424,10 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     hmax_pos = h_cwt[findex,e+rayleighDelay]
                     #for now, average it.
                     #h_numer = np.sqrt(hmax_neg**2 + hmax_pos**2) #RMS creates bias
-                    h_numer = 0.5 * (hmax_neg + hmax_pos)
+                    #h_numer = 0.5 * (hmax_neg + hmax_pos)
+                    #h_numer = np.maximum(hmax_neg,hmax_pos)
+                    #h_numer = np.sqrt(0.5 * (hmax_neg**2+hmax_pos**2))
+                    h_numer = np.maximum( hmax_neg,hmax_pos)
                     v_numer = vmax
                     h_spec[findex] = np.sum(h_numer) / h_numer.shape[0]
                     v_spec[findex] = np.sum(v_numer) / v_numer.shape[0]
@@ -427,7 +440,7 @@ def calculateHVSR(stream, intervals, window_length, method, options,
                     for _j in xrange(smoothing_count):
                         v_spec = np.dot(v_spec, sm_matrix)
                         h_spec = np.dot(h_spec, sm_matrix)
-            hv_spec = h_spec / v_spec
+            hv_spec = np.sqrt(h_spec / v_spec)
             if _i == 0:
                 good_freq = v_freq
             # Store it into the matrix if it has the correct length.

@@ -12,19 +12,24 @@ from matplotlib import gridspec
 import scipy
 import calendar
 import math
+import sys
 from sklearn.covariance import GraphLassoCV, ledoit_wolf
 
 CLIP_TO_FREQ = False 
 RESAMPLE_FREQ = False
 
-nfrequencies = 50
-initialfreq = 0.4
-finalfreq = 50.0
+nfrequencies = 200
+initialfreq = 0.2
+finalfreq = 48.0
 
-runprefix = 'wide1_'
+#runprefix = 'cwtfix_rmsrt2_04_40_'
+runprefix = 'cwt_02_48_'
 
 #dr = '/g/data/ha3/Passive/Stavely/'
-dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S0600miniSEED/'
+#dr = '/g/data/ha3/Passive/OvernightData/STAVELY/S06PS/Seismometer_data/S0600/S0600miniSEED/'
+#dr = '/g/data/ha3/Passive/OvernightData/ST2015/Thomson/NAN2/NAN2BAminiSEED/'
+dr = sys.argv[1]
+
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/AdventureWay1/aw05/AW05_miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Overshot1/OV04/OV04_miniSEED/'
 #dr = '/g/data/ha3/Passive/OvernightData/Southern_Thompson_2016/Eulo1/EU13/EU13_miniSEED/'
@@ -41,12 +46,12 @@ st.merge(method=1,fill_value=0)
 #st = st.slice(st[0].stats.starttime, st[0].stats.starttime+28800)
 print "stream length = " + str(len(st))
 
-(master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,spectra_options={'time_bandwidth':3.5, 'number_of_tapers':None, 'quadratic':False, 'adaptive':True,'nfft':None,'taper':'blackman'},master_curve_method='mean',cutoff_value=0.0,window_length=50.0,bin_samples=nfrequencies,f_min=initialfreq,f_max=finalfreq)
+(master_curve, hvsr_freq, error, hvsr_matrix) = batch.create_HVSR(st,spectra_method=spectra_method,spectra_options={'time_bandwidth':3.5, 'number_of_tapers':None, 'quadratic':False, 'adaptive':True,'nfft':None,'taper':'blackman'},master_curve_method='mean',cutoff_value=0.0,window_length=100.0,bin_samples=nfrequencies,f_min=initialfreq,f_max=finalfreq)
 
 nwindows = len(hvsr_matrix)
 
-lowest_freq = 0.3
-highest_freq = 50.0
+lowest_freq = 0.2
+highest_freq = 40.0
 def find_nearest_idx(array,value):
 	return (np.abs(array-value)).argmin()
 
@@ -68,7 +73,7 @@ else:
 	interp_hvsr_matrix = hvsr_matrix
 	nfrequencies = hvsr_freq.shape[0]
 	initialfreq = hvsr_freq[0]
-	finalfreq = hvsr_freq[nfrequencies-1]
+	finafreq = hvsr_freq[nfrequencies-1]
 #master_curve = interp_hvsr_matrix.mean(axis=0)
 master_curve = np.median(interp_hvsr_matrix,axis=0)
 std = (np.log1p(interp_hvsr_matrix[:][:]) - np.log1p(master_curve))
@@ -98,13 +103,8 @@ print hvsr_freq
 print "Error shape: " + str(error.shape)
 print error
 
-diagerr = np.sqrt(np.diag(error))
-lerr = np.exp(np.log(master_curve) - diagerr)
-uerr = np.exp(np.log(master_curve) + diagerr)
 saveprefix = dr+runprefix+(spectra_method.replace(' ','_'))
 
-np.savetxt(saveprefix+'hv.txt',np.column_stack((hvsr_freq,master_curve, lerr,uerr)))
-np.savetxt(saveprefix+'error.txt',error)
 np.savetxt(saveprefix+'inverror.txt',np.linalg.inv(error))
 logdeterr = np.linalg.slogdet(error)
 print "Log determinant of error matrix: " + str(logdeterr)
@@ -117,9 +117,15 @@ logdetsperr = np.linalg.slogdet(sp_cov)
 print "Log determinant of sparse error matrix: " + str(logdetsperr)
 np.savetxt(saveprefix+'logdetsperror.txt',np.array(logdetsperr))
 
+diagerr = np.sqrt(np.diag(sp_cov))
+lerr = np.exp(np.log(master_curve) - diagerr)
+uerr = np.exp(np.log(master_curve) + diagerr)
+np.savetxt(saveprefix+'hv.txt',np.column_stack((hvsr_freq,master_curve, lerr,uerr)))
+np.savetxt(saveprefix+'error.txt',error)
+
 #f,((a1,a2,a3),(cba1,cba2,cba3)) = plt.subplots(2,3,figsize=(18,6))
 f = plt.figure(figsize=(18,6))
-gs = gridspec.GridSpec(4, 4, height_ratios=[40, 1,40,1])
+gs = gridspec.GridSpec(4, 3, height_ratios=[40, 1,40,1])
 a1 = plt.subplot(gs[:,0])
 a1.plot(hvsr_freq,master_curve,'r')
 a1.plot(hvsr_freq,lerr,':g')
@@ -145,8 +151,8 @@ cba23 = plt.subplot(gs[3,2])
 cbar23 = f.colorbar(ca23,cax=cba23,orientation='horizontal')
 
 
-a4 = plt.subplot(gs[:,3])
-a4.hist(errormag,50)
+#a4 = plt.subplot(gs[:,3])
+#a4.hist(errormag,50)
 
 #plt.show()
 #plt.show()

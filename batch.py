@@ -88,7 +88,7 @@ def create_HVSR(filename, vertical_channel=None, spectra_method='multitaper',
         stream = filename
     # Check if exactly three traces are in the Stream object.
     if len(stream) != 3:
-        msg = 'The file needs to contain exactly three channels.'
+        msg = 'The file needs to contain exactly three channels. This file contains ' + str(len(stream)) + ' channels'
         raise Exception(msg)
     # Autodetect the orientation of the Traces.
     if vertical_channel is None:
